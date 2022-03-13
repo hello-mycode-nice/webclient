@@ -13,6 +13,7 @@
  * 2018-07-26     chenyong     modify log information
  * 2018-08-07     chenyong     modify header processing
  * 2021-06-09     xiangxistu   add shard download function
+ * 2022-03-13     one_pifu     fix http-get once more if the last try fail
  */
 
 #include <stdio.h>
@@ -1059,6 +1060,7 @@ int webclient_shard_position_function(struct webclient_session *session, const c
     char *buffer = RT_NULL;
     int start_position, end_position = 0;
     int total_len = 0;
+    rt_bool_t end_package_fail = RT_FALSE;
 
     RT_ASSERT(session);
     RT_ASSERT(URI);
@@ -1072,7 +1074,7 @@ int webclient_shard_position_function(struct webclient_session *session, const c
     rt_memset(session->header->buffer, 0x00, session->header->size);
     session->header->length = 0;
 
-    for(start_position = end_position; total_len != end_position + 1;)
+    for(start_position = end_position; total_len != end_position + 1; || (RT_TRUE == end_package_fail);)
     {
         RT_ASSERT(start_position <= total_len);
         int data_len = 0;
@@ -1154,6 +1156,12 @@ int webclient_shard_position_function(struct webclient_session *session, const c
         {
             start_position += data_len;
             result = session->handle_function(buffer, data_len);
+
+            if(RT_TRUE == end_package_fail){
+                webclient_clean(session);
+                end_package_fail = RT_FALSE;                
+            }
+
             if(result != RT_EOK)
             {
                 return -WEBCLIENT_ERROR;
@@ -1165,6 +1173,10 @@ int webclient_shard_position_function(struct webclient_session *session, const c
             webclient_clean(session);
             if(session->socket == -WEBCLIENT_ERROR)
             {
+                if(total_len == end_position + 1){
+                    end_package_fail = RT_TRUE;
+                }
+
                 webclient_connect(session, URI);
             }
         }
